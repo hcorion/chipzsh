@@ -119,7 +119,7 @@ do
     # Drawing the screen.
     if [ $draw -eq 1 ]
     then
-        for i in {0..31}; do fmt+="%s"; done; fmt+="\n"; printf "$fmt" "${screen[@]}"
+        for i in {0..63}; do fmt+="%s"; done; fmt+="\n"; printf "$fmt" "${screen[@]}"
         fmt=""
         draw=0
         echo "-----------------------------------------------------"
