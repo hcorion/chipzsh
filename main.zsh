@@ -10,28 +10,10 @@ echo "test"
 # For converting hex to decimal: echo $((16#FF))
 
 
-TEMPVAR=""
-# Creates an array of size x. Assumes the var is a number.
-createNumberArray() 
-{
-    if [ -z "$1" ]
-    then
-        echo "You need to provide a parameter when calling createNumberArray."
-    else
-        declare -a array
-        for i in {1.."$1"}
-        do
-            array+=("0000")
-        done
-        TEMPVAR=$array
-    fi
-}
-
 # Reading input from file TODO: Add support for different files.
 declare -a inputfile
 LC_ALL=C inputfile=($(od -t x1 -An brix.ch8))
 
-# The program counter, it starts at 0x200 in hex, 512 integer.
 ########################################
 ## SETTING UP THE VARIABLES           ##
 ########################################
@@ -65,31 +47,29 @@ do
 done
 
 
-
 ########################################
 ## SETTING UP THE RAM                 ##
 ########################################
 
 declare -a fonts
 
-#fonts=(240 144 144 144 240 32 96 32 32 112 240 16 240 128 240 240 16 240 16 240 144 144 240 16 16 240 128 240 16 240 240 128 240 144 240 240 16 32 64 64 240 144 240 144 240 240 144 240 16 240 240 144 240 144 144 224 144 224 144 224 240 128 128 128 240 224 144 144 144 224 240 128 240 128 240 240 128 240 128 128)
 fonts=(
-        F0 90 90 90 F0
-        20 60 20 20 70 
-        F0 10 F0 80 F0 
-        F0 10 F0 10 F0
-        90 90 F0 10 10
-        F0 80 F0 10 F0
-        F0 80 F0 90 F0
-        F0 10 20 40 40
-        F0 90 F0 90 F0
-        F0 90 F0 10 F0
-        F0 90 F0 90 90 
-        E0 90 E0 90 E0
-        F0 80 80 80 F0
-        E0 90 90 90 E0 
-        F0 80 F0 80 F0
-        F0 80 F0 80 80 
+        f0 90 90 90 f0 # 0
+        20 60 20 20 70 # 1
+        f0 10 f0 80 f0 # 2
+        f0 10 f0 10 f0 # 3
+        90 90 f0 10 10 # 4
+        f0 80 f0 10 f0 # 5
+        f0 80 f0 90 f0 # 6
+        f0 10 20 40 40 # 7
+        f0 90 f0 90 f0 # 8
+        f0 90 f0 10 f0 # 9
+        f0 90 f0 90 90 # A
+        e0 90 e0 90 e0 # B
+        f0 80 80 80 f0 # C
+        e0 90 90 90 e0 # D
+        f0 80 f0 80 f0 # E
+        f0 80 f0 80 80 # F
 )
 
 declare -a ram
@@ -102,18 +82,18 @@ do
     ram+=$fonts[$i]
 done
 
-# I read somewhere that the data from 0x0 to 0x200 (512) is reserved for things.
+# data from 0x0 to 0x200 (512) is reserved for things. and we already added the font values (512-80=0x50). 
 for i in {1..431}
 do
     ram+=0
 done
-echo "RAM LENGTH: ${#ram[@]} (should be 512)"
 # The ROM information is copied to the RAM starting at 0x200 (512)
 for i in {1..${#inputfile[@]}}
 do
     ram+=${inputfile[$i]}
 done
-# 
+
+# Fill up the rest of the rom.
 for i in {1..$(expr 3584 - ${#inputfile[@]})}
 do
     ram+=0
@@ -121,10 +101,6 @@ done
 
 echo $ram
 echo "RAM LENGTH: ${#ram[@]} (should be 4096)"
-# I figured that it would be best if we unset tempvar.
-TEMPVAR=""
-
-
 
 #Delete variable
 inputfile=""
@@ -139,36 +115,23 @@ cycles=0
 draw=0
 while [ $done -eq 0 ]
 do
-    ## Draw the screen
-    #buffer=""
-    #for i in {1..32}
-    #do
-    #    for d in {1..64}
-    #    do
-    #        buffer+="$screen[`expr $i + $d - 1`]"
-    #    done
-    #    buffer+="\n"
-    #done
-    #printf $buffer
     
+    # Drawing the screen.
     if [ $draw -eq 1 ]
     then
         for i in {0..31}; do fmt+="%s"; done; fmt+="\n"; printf "$fmt" "${screen[@]}"
         draw=0
         echo "-----------------------------------------------------"
     fi
-    #
+
     ((cycles+=1))
     if [ $cycles -gt 999999999999999999 ]
     then
         done=1
     fi
-    sleep 1
 
-
-    #echo "PC = $PC"
     address=$ram[${PC}]
-    #echo "We're currently at register: $address"
+
     case ${address:0:1} in
         (0)
             case ${ram[`expr $PC + 1`]:0:2} in
@@ -207,7 +170,7 @@ do
         (d)
             # Format: DXYN
             # Pixel drawing. TODO
-            #echo "Drawing pixels is not yet implemented."
+            # I have no idea how this works (yet) and it doesn't work properly (yet)
             nextAddress=$ram[`expr $PC + 1`]
             height=$((16#${nextAddress:1:2}))
             x=$((16#${address:1:2}))
@@ -230,10 +193,10 @@ do
                         six=6
                         index=$(($index << $six))
                         tempster=$screen[$index]
-                        #echo "Index at screen $screen[$index]"
-                        #echo "index: $index"
+                        
                         if [ $index -gt 2048 ]
                         then
+                            echo "Something has gone terribly wrong."
                             stop=1
                             echo "PC: $PC"
                             echo "I: $I"
@@ -241,22 +204,7 @@ do
                             
                             #Draw screen
                             echo "Screen: "
-                            #printf '%-8s\n' "${screen[@]}"
-                            #printf "%s\n" "${screen[@]}"
-                            #for i in {0..31}; do fmt+="%s \n"; done; printf "$fmt" "${screen[@]}"
                             for i in {0..31}; do fmt+="%s "; done; fmt+="\n"; printf "$fmt" "${screen[@]}"
-                            #echo "Screen: $screen"
-                            #buffer=""
-                            #for i in {1..32}
-                            #do
-                            #    for d in {1..64}
-                            #    do
-                            #        buffer+="$screen[`expr $i + $d - 1`]"
-                            #    done
-                            #    buffer+="\n"
-                            #done
-                            #echo $buffer
-                            
                             echo "Index: $index"
                         fi
                         if [ $tempster -eq 0 ]
@@ -264,26 +212,8 @@ do
                             reg[16]=1
                         fi
                         screen[index]=$(($screen[$index] ^ 1))
-                        #echo $screen
                     fi
-                    
-                    #if []
-                    #screen[`expr $col + $x + $tmp << 6`]=
-                    #vscreen[(i + x + ((y+e)<<6))]
-                    #then
-                    #    
-                    #fi
                 done
-            #for (col = 0; col < width; col++) {
-            #  if ((sprite & 0x80) > 0) {
-            #    if (this.screen.setPixel(this.v[x] + col, this.v[y] + row)) {
-            #      this.v[0xF] = 1;
-            #    }
-            #  }
-            #
-            #
-            #  sprite = sprite << 1;
-            #}
             done
             
             #done=1
