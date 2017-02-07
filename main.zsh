@@ -243,8 +243,8 @@ do
                     then
 
                         # Set pixels:
-                        xpos=$(($register[$x] + col))
-                        ypos=$(($register[$y] + row))
+                        xpos=$(($reg[$(($x+1))] + col))
+                        ypos=$(($reg[$(($y+1))] + row))
                         #echo "Setting pixel at X $xpos Y $ypos"
                         if [ $ypos -gt 32 ]
                         then
@@ -395,21 +395,21 @@ do
                     #((PC+=2))
                     ;;
                 (33)
-                    # Look up this one, I just copied a pre-made solution.
+                    # Format FX33
+                    # Store BCD representation of register X in memory locations I, I+1, and I+2.
                     number=$reg[`expr $((16#${address:1:2})) + 1`]
                     
-                    for i in {3..1}
-                    do
-                        #echo "$i"
-                        printf -v hex "%x" $(( $number % 10 ))
-                        #printf '%x\n' $((0x`expr $number % 10`))
-                        #ram[((`expr $I + $i` + 1))]=$((0x`expr $number % 10`))
-                        ram[((`expr $I + $i` + 1))]=$hex
-                        number=`expr $number / 10`
-                    done
+                    # All values stored in RAM need to be hex, so we need to convert it back into hexadecimal.
+                    printf -v hex "%x" $(( $number / 100 ))
+                    ram[(($I))]=$hex
+
+                    printf -v hex "%x" $(( $number % 100 /10 ))
+                    ram[(($I + 1))]=$hex
+
+                    printf -v hex "%x" $(( $number % 10 ))
+                    ram[(($I + 2))]=$hex
                     
                     # A check to make sure everything is working.
-
                     if [ $number -gt 0 ]
                     then
                         done=1
