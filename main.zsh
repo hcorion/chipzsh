@@ -20,6 +20,19 @@ LC_ALL=C inputfile=($(od -t x1 -An brix.ch8))
 ## SETTING UP THE VARIABLES           ##
 ########################################
 
+function getRandom()
+{
+    # By setting the internet to 1 it becomes very slow to generate random numbers
+    # and requires an internet connection but you get the very best random numbers.
+    internet=0
+    if [ $internet -eq 1 ]
+    then
+        return $(curl -s "https://www.random.org/integers/?num=1&min=0&max=255&col=1&base=10&format=plain&rnd=new")
+    else
+        return $(( RANDOM % 255 ))
+    fi
+}
+
 # The program counter starts at 0x200 (512)
 PC=512
 
@@ -120,8 +133,10 @@ draw=0
 pause=0
 while [ $done -eq 0 ]
 do
-    ((PC+=2))
-    echo "PC: $PC"
+
+    
+    #echo "PC: $PC"
+    
     # Drawing the screen.
     if [ $draw -eq 1 ]
     then
@@ -155,8 +170,10 @@ do
     fi
 
     address=$ram[${PC}]
-    echo "Opcode: ${address}${ram[`expr $PC + 1`]:0:2}"
-    echo "delayTimer: $delayTimer"
+    
+
+    #echo "Opcode: ${address}${ram[`expr $PC + 1`]:0:2}"
+    #echo "delayTimer: $delayTimer"
 
     case ${address:0:1} in
         (0)
@@ -184,6 +201,7 @@ do
             # Format: 1NNN
             # Jumps to address NNN.
             PC=$((16#${address:1:2}${ram[`expr $PC + 1`]:0:2}))
+            ((PC-=2))
             #echo "PC now set to: $PC"
             ;;
         (a)
@@ -262,6 +280,7 @@ do
             stack[sp]=$PC
             ((sp++))
             PC=$((16#${address:1:2}${ram[`expr $PC + 1`]:0:2}))
+            ((PC-=2))
             #echo "Calling subroutine at address $PC"
             ;;
         (3)
@@ -301,6 +320,53 @@ do
             fi
             #echo "Register is now: $reg[$regAddress]"
             #((PC+=2))
+            ;;
+        (8)
+            # The mega math opcode
+            nextAddress=${ram[`expr $PC + 1`]}
+            case ${nextAddress:1:2} in
+                (2)
+                    # Format 8XY2
+                    # Sets register X to register X AND register Y. (Bitwise AND operation)
+                    x=`expr $((16#${address:1:2})) + 1`
+                    y=`expr $((16#${nextAddress:0:1})) + 1`
+
+                    reg[$x]=$(($reg[$x] & $reg[$y]))
+                    ;;
+                *)
+                    done=1
+                    echo "ERROR! Unimplemented math opcode called: ${address}${nextAddress}"
+                    ;;
+            esac
+
+            ;;
+        (c)
+            # Format: CXNN
+            # Set register X = random byte AND NN.
+            getRandom
+            random=$?
+            nextAddress=$((16#$ram[`expr $PC + 1`]))
+            reg[`expr $((16#${address:1:2})) + 1`]=$(($random & $nextAddress))
+            ;;
+        (e)
+            # Format: EX9E or EXA1
+            nextAddress=$ram[`expr $PC + 1`]
+            if [ "$nextAddress" = "9e" ]
+            # Skips the next instruction if the key stored in register X is pressed.
+            then
+                # TODO: ACTUALLY implement
+                echo "Warning, nothing actually happens here."
+                
+            elif [ "$nextAddress" = "a1" ]
+            # Skips the next instruction if the key stored in register X isn't pressed.
+            then
+                # TODO: ACTUALLY implement
+                echo "Warning, nothing actually happens here."
+                ((PC+=2))
+            else
+                done=1
+                echo "Error! Unkown opcode was called: ${address}${nextAddress}"
+            fi
             ;;
         (f)
             # The opcode to rule them all!
@@ -376,6 +442,8 @@ do
             done=1
             ;;
     esac
+
+    ((PC+=2))
 done
 
 echo "Stats: "
