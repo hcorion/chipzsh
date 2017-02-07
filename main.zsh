@@ -6,6 +6,8 @@ echo "test"
 
 ## Developing notes
 # Ram size is 4096, 0x1000 in hex
+# All ram values should be stored in hex
+# The PC, I, Stack, Stack Pointer, screen and registers should be stored as integers.
 # This seems to be a good solution for input: http://stackoverflow.com/questions/24118224/how-to-make-asynchronous-function-calls-in-shell-scripts
 # For converting hex to decimal: echo $((16#FF))
 
@@ -46,6 +48,8 @@ do
     screen+=0
 done
 
+delayTimer=0
+speed=1
 
 ########################################
 ## SETTING UP THE RAM                 ##
@@ -113,9 +117,11 @@ inputfile=""
 done=0
 cycles=0
 draw=0
+pause=0
 while [ $done -eq 0 ]
 do
-    
+    ((PC+=2))
+    echo "PC: $PC"
     # Drawing the screen.
     if [ $draw -eq 1 ]
     then
@@ -130,8 +136,27 @@ do
     then
         done=1
     fi
+    
+    if [ $cycles -ge $speed ]
+    then
+        cycles=0
+        if [ $delayTimer -gt 0 ]
+        then
+            ((delayTimer-=1))
+        fi
+    fi
+    
+
+    if [ $pause -eq 1 ]
+    then
+        pause=0
+        echo "Press enter when your ready to proceed."
+        #read
+    fi
 
     address=$ram[${PC}]
+    echo "Opcode: ${address}${ram[`expr $PC + 1`]:0:2}"
+    echo "delayTimer: $delayTimer"
 
     case ${address:0:1} in
         (0)
@@ -145,11 +170,11 @@ do
                     echo "Drawing pixels is not yet implemented."
                     done=1
                     draw=1
-                    ((PC+=2))
+                    #((PC+=2))
                     ;;
                 *)
                     echo "YOUR NOT SUPPOSED TO TRIGGER"
-                    echo "${ram[`expr $PC + 1`]:0:2}"
+                    echo "Opcode: ${address}${ram[`expr $PC + 1`]:0:2}"
                     done=1
                     ;;
             esac
@@ -166,7 +191,7 @@ do
             # Sets I to the address NNN.
             I=$((16#${address:1:2}${ram[`expr $PC + 1`]:0:2}))
             #echo "I now set to: $I"
-            ((PC+=2))
+            #((PC+=2))
             ;;
         (d)
             # Format: DXYN
@@ -177,50 +202,59 @@ do
             x=$((16#${address:1:2}))
             y=$((16#${nextAddress:0:1}))
             reg[16]=0
-            #echo "X = $x y=$y height=$height and the opcode was ${address}${nextOpcode}"
-            width=8
-            for row in {0..$height}
+            #echo $height
+            #for (( row=0; row<$height; row++ ))
+            #do
+            #    echo "Number= `expr $I + $row`"
+            #    sprite=$((16#$ram[`expr $I + $row`]))
+            #    echo "row = $row"
+            #    echo "Sprite = $sprite"
+            #done
+            #done=1
+            
+            #echo "X = $x y=$y height=$height and the opcode was ${address}${nextAddress}"
+            
+            for (( row=0; row<$height; row++ ))
             do
                 sprite=$((16#$ram[`expr $I + $row`]))
-                for col in {0..$width}
+                for col in {0..7}
                 do
-                    test=""
                     test=$((${sprite} & 128))
                     #echo "$sprite and 120 = $test"
                     if [ $test -gt 0 ]
                     then
-                        temp=`expr $y + $row`
-                        index=`expr $col + $x + $temp`
-                        six=6
-                        index=$(($index << $six))
-                        tempster=$screen[$index]
-                        
-                        if [ $index -gt 2048 ]
+
+                        # Set pixels:
+                        xpos=$(($register[$x] + col))
+                        ypos=$(($register[$y] + row))
+                        #echo "Setting pixel at X $xpos Y $ypos"
+                        if [ $ypos -gt 32 ]
                         then
-                            echo "Something has gone terribly wrong."
-                            stop=1
-                            echo "PC: $PC"
-                            echo "I: $I"
-                            echo "Reigsters: $reg"
-                            echo "Screen size: ${#screen[@]}"
-                            #Draw screen
-                            echo "Screen: "
-                            for i in {0..31}; do fmt+="%s "; done; fmt+="\n"; printf "$fmt" "${screen[@]}"
-                            fmt=""
-                            echo "Index: $index"
+                            done=1
+                            echo "Error! ypos is greater than 32, and is $ypos"
                         fi
-                        if [ $tempster -eq 0 ]
+                        if [ $xpos -gt 64 ]
+                        then
+                            done=1
+                            echo "Error! xpos is greater than 64, and is $xpos"
+                        fi
+                        location=$(($xpos + $ypos * 64 + 1))
+                        #echo "Location: $location"
+                        #echo $screen[$location]
+                        screen[location]=$(($screen[$location] ^ 1))
+                        if [ $screen[$location] -eq 0 ]
                         then
                             reg[16]=1
                         fi
-                        screen[index]=$(($screen[$index] ^ 1))
                     fi
+                    sprite=$(($sprite << 1))
                 done
+                
             done
             
             #done=1
             draw=1
-            ((PC+=2))
+            #((PC+=2))
             ;;
         (2)
             # Format: 2NNN
@@ -237,10 +271,11 @@ do
 
             if [ $register -eq $((16#${ram[`expr $PC + 1`]:0:2})) ]
             then
-                ((PC+=4))
-            else
                 ((PC+=2))
             fi
+            #else
+            #    ((PC+=2))
+            #fi
             ;;
         (6)
             # Format: 6XNN
@@ -248,7 +283,7 @@ do
             nextAddress=${ram[`expr $PC + 1`]:0:2}
             #echo "Making data register ${address:1:2} set to $nextAddress"
             reg[`expr $((16#${address:1:2})) + 1`]=$((16#${nextAddress}))
-            ((PC+=2))
+            #((PC+=2))
             ;;
         (7)
             # Format: 7XNN
@@ -265,30 +300,59 @@ do
                 reg[$regAddress]=$added
             fi
             #echo "Register is now: $reg[$regAddress]"
-            ((PC+=2))
+            #((PC+=2))
             ;;
         (f)
             # The opcode to rule them all!
             case ${ram[`expr $PC + 1`]:0:2} in
+                (07)
+                    # Format: FX07
+                    # Sets register X to delayTimer
+                    reg[`expr $((16#${address:1:2})) + 1`]=$delayTimer
+                    ;;
+                (15)
+                    # Format: FX15
+                    # Sets delayTimer to register X
+                    delayTimer=$reg[`expr $((16#${address:1:2})) + 1`]
+                    ;;
                 (29)
                     # Format: FX29
                     # Sets I to the location of the sprite for the character in VX. Characters 0-F (in hexadecimal) are represented by a 4x5 font.
                     data=`expr $((16#${address:1:2})) + 1`
-                    I=`expr $reg[$data] \* 5`
-                    ((PC+=2))
+                    
+                    I=$(($reg[$data] * 5))
+                    if [ $I -gt 255 ]
+                    then
+                        echo "I is really (too) big."
+                        done=1 
+                    fi
+                    #((PC+=2))
                     ;;
                 (33)
                     # Look up this one, I just copied a pre-made solution.
                     number=$reg[`expr $((16#${address:1:2})) + 1`]
-                    #echo "number = $number"
-                    #echo "I = $I"
+                    
                     for i in {3..1}
                     do
                         #echo "$i"
-                        ram[((`expr $I + $i` + 1))]=$((0x`expr $number % 10`))
+                        printf -v hex "%x" $(( $number % 10 ))
+                        #printf '%x\n' $((0x`expr $number % 10`))
+                        #ram[((`expr $I + $i` + 1))]=$((0x`expr $number % 10`))
+                        ram[((`expr $I + $i` + 1))]=$hex
                         number=`expr $number / 10`
                     done
-                    ((PC+=2))
+                    
+                    # A check to make sure everything is working.
+
+                    if [ $number -gt 0 ]
+                    then
+                        done=1
+                        echo "Exciting stuff!"
+                        echo "hex: $hex"
+                        echo "number: $number"
+                        echo "I: $I"
+                    fi
+                    #((PC+=2))
                     ;;
                 (65)
                     # Format: FX65
@@ -296,10 +360,10 @@ do
                     #echo "reg before" $reg
                     for i in {1..`expr $((16#${address:1:2})) + 1`}
                     do
-                        reg[$i]=$ram[`expr $I + $i - 1`]
+                        reg[$i]=$((16#$ram[`expr $I + $i - 1`]))
                     done
                     #echo "reg after" $reg
-                    ((PC+=2))
+                    #((PC+=2))
                     ;;
                 *)
                     echo "F is unimplemented. Calling: ${address:1:2}${ram[`expr $PC + 1`]:0:2}"
@@ -314,13 +378,5 @@ do
     esac
 done
 
-buffer=""
-    for i in {1..32}
-    do
-        for d in {1..63}
-        do
-            buffer+="$screen[`expr $i + $d`]"
-        done
-        buffer+="\n"
-    done
-    echo $buffer
+echo "Stats: "
+echo "We went through $cycles cycles."
