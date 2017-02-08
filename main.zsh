@@ -24,7 +24,8 @@ function getRandom()
 {
     # By setting the internet to 1 it becomes very slow to generate random numbers
     # and requires an internet connection but you get the very best random numbers.
-    internet=0
+    return 15
+    internet=1
     if [ $internet -eq 1 ]
     then
         return $(curl -s "https://www.random.org/integers/?num=1&min=0&max=255&col=1&base=10&format=plain&rnd=new")
@@ -131,6 +132,9 @@ done=0
 cycles=0
 draw=0
 pause=0
+maxCycles=3500
+actualCycles=0
+rm ./brix-${maxCycles}-mine.txt 
 while [ $done -eq 0 ]
 do
 
@@ -147,9 +151,10 @@ do
     fi
 
     ((cycles+=1))
-    if [ $cycles -gt 999999999999999999 ]
+    ((actualCycles+=1))
+    if [ $actualCycles -gt $maxCycles ]
     then
-        done=1
+        exit
     fi
     
     if [ $cycles -ge $speed ]
@@ -173,6 +178,8 @@ do
     
 
     #echo "Opcode: ${address}${ram[`expr $PC + 1`]:0:2}"
+    
+    echo "${address}${ram[`expr $PC + 1`]:0:2}" &>> brix-${maxCycles}-mine.txt 
     #echo "delayTimer: $delayTimer"
 
     case ${address:0:1} in
@@ -180,7 +187,11 @@ do
             case ${ram[`expr $PC + 1`]:0:2} in
                 (ee)
                     #echo "Returning from subroutine."
-                    PC=$stack[`expr $sp - 1`]
+                    #((sp-=1))
+                    PC=$stack[$(($sp - 1))]
+                    echo "Returning from subroutine to opcode: ${ram[$PC]:0:2}${ram[`expr $PC + 1`]:0:2}"
+                    #$((PC-=2))
+                    #echo ""
                     ;;
                 (e0)
                     echo "LOL SUPPOSED TO CLEAR THE SCREEN HERE :P"
@@ -213,8 +224,7 @@ do
             ;;
         (d)
             # Format: DXYN
-            # Pixel drawing. TODO
-            # I have no idea how this works (yet) and it doesn't work properly (yet)
+            # Pixel drawing. 
             nextAddress=$ram[`expr $PC + 1`]
             height=$((16#${nextAddress:1:2}))
             x=$((16#${address:1:2}))
@@ -251,17 +261,33 @@ do
                             done=1
                             echo "Error! ypos is greater than 32, and is $ypos"
                         fi
-                        if [ $xpos -gt 64 ]
+                        
+                        columns=64
+                        if [ $xpos -ge 64 ]
+                        then
+                            while [ $xpos -ge $columns ]
+                            do
+                                ((xpos-=1))
+                            done
+
+                        fi
+                        location=$(($xpos + ( $ypos * $columns ) + 1))
+                        if [ $location -gt 2048 ]
                         then
                             done=1
-                            echo "Error! xpos is greater than 64, and is $xpos"
+                            echo "ERROR, ERROR!"
+                            echo "location: $location"
+                            echo "ypos: $ypos"
+                            echo "xpos: $xpos"
                         fi
-                        location=$(($xpos + $ypos * 64 + 1))
                         #echo "Location: $location"
                         #echo $screen[$location]
+                        previous=$screen[$location]
                         screen[location]=$(($screen[$location] ^ 1))
-                        if [ $screen[$location] -eq 0 ]
+                        if [[ $previous -eq 1 && $screen[$location] -eq 1 ]]
                         then
+                            done=1
+                            echo "Sprite collision!"
                             reg[16]=1
                         fi
                     fi
@@ -296,6 +322,16 @@ do
             #    ((PC+=2))
             #fi
             ;;
+        (4)
+            # Format: 4XNN
+            # Skips the next instruction if data register X is not equal to NN. 
+            register=$reg[`expr $((16#${address:1:2})) + 1`]
+
+            if [ $register -ne $((16#${ram[`expr $PC + 1`]:0:2})) ]
+            then
+                ((PC+=2))
+            fi
+            ;;
         (6)
             # Format: 6XNN
             # Sets data register X to NN.
@@ -312,7 +348,7 @@ do
             #echo "Adding $toAdd to data register #$regAddress which is $reg[$regAddress]"
             added=`expr $toAdd + $reg[$regAddress]`
             # We need to implement integer overflow.
-            if [ `expr $added` -ge 255 ]
+            if [ `expr $added` -gt 255 ]
             then
                 reg[$regAddress]=`expr $added - 255`
             else
@@ -330,8 +366,54 @@ do
                     # Sets register X to register X AND register Y. (Bitwise AND operation)
                     x=`expr $((16#${address:1:2})) + 1`
                     y=`expr $((16#${nextAddress:0:1})) + 1`
-
                     reg[$x]=$(($reg[$x] & $reg[$y]))
+                    ;;
+                (4)
+                    # Format 8XY4
+                    # Adds register Y to register X. Register 16 (carry flag) is set to 1 when there's a carry, and to 0 when there isn't.
+                    x=`expr $((16#${address:1:2})) + 1`
+                    y=`expr $((16#${nextAddress:0:1})) + 1`
+
+                    added=`expr $reg[$x] + $reg[$y]`
+                    
+                    # We need to implement integer overflow.
+                    if [ $added -gt 255 ]
+                    then
+                        #done=1
+                        echo "Overflowing!"
+                        reg[$x]=`expr $added - 256`
+                        reg[16]=1
+                    else
+                        reg[$x]=$added
+                        reg[16]=0
+                    fi
+                    ;;
+                (5)
+                    # Format 8XY5
+                    # register Y is subtracted from register X. register 16 (carry flag) is set to 0 when there's a borrow, and 1 when there isn't.
+                    x=`expr $((16#${address:1:2})) + 1`
+                    y=`expr $((16#${nextAddress:0:1})) + 1`
+
+                    sub=`expr $reg[$x] - $reg[$y]`
+                    
+                    # We need to implement integer overflow.
+                    if [ $sub -lt 0 ]
+                    then
+                        reg[$x]=`expr $sub + 256`
+                        reg[16]=1
+                    else
+                        reg[$x]=$sub
+                        reg[16]=0
+                    fi
+                    ;;
+                (6)
+                    # Format 8XY6
+                    # Shifts register X right by one. Register 16 (carry flag) is set to the value of the least significant bit of VX before the shift.
+                    x=`expr $((16#${address:1:2})) + 1`
+                    y=`expr $((16#${nextAddress:0:1})) + 1`
+                    
+                    reg[16]=$(($reg[$x] & 1))
+                    reg[$x]=$(($reg[$x] >> 1))
                     ;;
                 *)
                     done=1
@@ -355,6 +437,7 @@ do
             # Skips the next instruction if the key stored in register X is pressed.
             then
                 # TODO: ACTUALLY implement
+                #((PC+=2))
                 echo "Warning, nothing actually happens here."
                 
             elif [ "$nextAddress" = "a1" ]
@@ -367,6 +450,7 @@ do
                 done=1
                 echo "Error! Unkown opcode was called: ${address}${nextAddress}"
             fi
+            #done=1
             ;;
         (f)
             # The opcode to rule them all!
@@ -397,6 +481,7 @@ do
                 (33)
                     # Format FX33
                     # Store BCD representation of register X in memory locations I, I+1, and I+2.
+                    # Here is a good explanation: https://github.com/AfBu/haxe-CHIP-8-emulator/wiki/(Super)CHIP-8-Secrets#understanding-of-store-bcd-instruction
                     number=$reg[`expr $((16#${address:1:2})) + 1`]
                     
                     # All values stored in RAM need to be hex, so we need to convert it back into hexadecimal.
