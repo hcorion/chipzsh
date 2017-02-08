@@ -144,7 +144,17 @@ do
     # Drawing the screen.
     if [ $draw -eq 1 ]
     then
-        for i in {0..63}; do fmt+="%s"; done; fmt+="\n"; printf "$fmt" "${screen[@]}"
+        for i in {0..63}
+        do
+            fmt+="%s"
+        done
+        fmt+="\n"
+        printf -v new "$fmt" "${screen[@]}"
+        new=${new//0/█}
+        echo "${new//1/ }"
+        #█
+        #echo "fmt: $fmt"
+
         fmt=""
         draw=0
         echo "-----------------------------------------------------"
