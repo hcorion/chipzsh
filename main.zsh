@@ -150,8 +150,8 @@ do
         done
         fmt+="\n"
         printf -v new "$fmt" "${screen[@]}"
-        new=${new//0/█}
-        echo "${new//1/ }"
+        new=${new//1/█}
+        echo "${new//0/ }"
         #█
         #echo "fmt: $fmt"
 
@@ -179,9 +179,10 @@ do
 
     if [ $pause -eq 1 ]
     then
+        
         pause=0
-        echo "Press enter when your ready to proceed."
-        #read
+        echo "Press any key when your ready to proceed."
+        read -q
     fi
 
     address=$ram[${PC}]
@@ -197,8 +198,8 @@ do
             case ${ram[`expr $PC + 1`]:0:2} in
                 (ee)
                     #echo "Returning from subroutine."
-                    #((sp-=1))
-                    PC=$stack[$(($sp - 1))]
+                    ((sp-=1))
+                    PC=$stack[$sp] # $(($sp - 1))]
                     echo "Returning from subroutine to opcode: ${ram[$PC]:0:2}${ram[`expr $PC + 1`]:0:2}"
                     #$((PC-=2))
                     #echo ""
@@ -216,8 +217,7 @@ do
                     done=1
                     ;;
             esac
-
-        ;;
+            ;;
         (1)
             # Format: 1NNN
             # Jumps to address NNN.
@@ -225,12 +225,147 @@ do
             ((PC-=2))
             #echo "PC now set to: $PC"
             ;;
+        (2)
+            # Format: 2NNN
+            # Calls subroutine at NNN.
+            stack[sp]=$PC
+            ((sp++))
+            PC=$((16#${address:1:2}${ram[`expr $PC + 1`]:0:2}))
+            ((PC-=2))
+            #echo "Calling subroutine at address $PC"
+            ;;
+        (3)
+            # Format: 3XNN
+            # Skips the next instruction if data register X is equal to NN. 
+            register=$reg[`expr $((16#${address:1:2})) + 1`]
+
+            if [ $register -eq $((16#${ram[`expr $PC + 1`]:0:2})) ]
+            then
+                ((PC+=2))
+            fi
+            #else
+            #    ((PC+=2))
+            #fi
+            ;;
+        (4)
+            # Format: 4XNN
+            # Skips the next instruction if data register X is not equal to NN. 
+            register=$reg[`expr $((16#${address:1:2})) + 1`]
+
+            if [ $register -ne $((16#${ram[`expr $PC + 1`]:0:2})) ]
+            then
+                ((PC+=2))
+            fi
+            ;;
+        (6)
+            # Format: 6XNN
+            # Sets data register X to NN.
+            nextAddress=${ram[`expr $PC + 1`]:0:2}
+            #echo "Making data register ${address:1:2} set to $nextAddress"
+            reg[`expr $((16#${address:1:2})) + 1`]=$((16#${nextAddress}))
+            #((PC+=2))
+            ;;
+        (7)
+            # Format: 7XNN
+            # Adds NN to data register X.
+            toAdd=$((16#${ram[`expr $PC + 1`]:0:2}))
+            regAddress=`expr $((16#${address:1:2})) + 1`
+            #echo "Adding $toAdd to data register #$regAddress which is $reg[$regAddress]"
+            added=`expr $toAdd + $reg[$regAddress]`
+            # We need to implement integer overflow.
+            if [ `expr $added` -gt 255 ]
+            then
+                reg[$regAddress]=`expr $added - 255`
+            else
+                reg[$regAddress]=$added
+            fi
+            #echo "Register is now: $reg[$regAddress]"
+            #((PC+=2))
+            ;;
+        (8)
+            # The mega math opcode
+            nextAddress=${ram[`expr $PC + 1`]}
+            case ${nextAddress:1:2} in
+                (0)
+                    # Format 8XY0
+                    # Sets register X to register Y.
+                    x=`expr $((16#${address:1:2})) + 1`
+                    y=`expr $((16#${nextAddress:0:1})) + 1`
+                    reg[$x]=$reg[$y]
+                    ;;
+                (2)
+                    # Format 8XY2
+                    # Sets register X to register X AND register Y. (Bitwise AND operation)
+                    x=`expr $((16#${address:1:2})) + 1`
+                    y=`expr $((16#${nextAddress:0:1})) + 1`
+                    reg[$x]=$(($reg[$x] & $reg[$y]))
+                    ;;
+                (4)
+                    # Format 8XY4
+                    # Adds register Y to register X. Register 16 (carry flag) is set to 1 when there's a carry, and to 0 when there isn't.
+                    x=`expr $((16#${address:1:2})) + 1`
+                    y=`expr $((16#${nextAddress:0:1})) + 1`
+
+                    added=`expr $reg[$x] + $reg[$y]`
+                    
+                    # We need to implement integer overflow.
+                    if [ $added -gt 255 ]
+                    then
+                        reg[$x]=`expr $added - 256`
+                        reg[16]=1
+                    else
+                        reg[$x]=$added
+                        reg[16]=0
+                    fi
+                    ;;
+                (5)
+                    # Format 8XY5
+                    # register Y is subtracted from register X. register 16 (carry flag) is set to 0 when there's a borrow, and 1 when there isn't.
+                    x=`expr $((16#${address:1:2})) + 1`
+                    y=`expr $((16#${nextAddress:0:1})) + 1`
+
+                    sub=`expr $reg[$x] - $reg[$y]`
+                    
+                    # We need to implement integer overflow.
+                    if [ $sub -lt 0 ]
+                    then
+                        reg[$x]=`expr $sub + 256`
+                        reg[16]=1
+                    else
+                        reg[$x]=$sub
+                        reg[16]=0
+                    fi
+                    ;;
+                (6)
+                    # Format 8XY6
+                    # Shifts register X right by one. Register 16 (carry flag) is set to the value of the least significant bit of VX before the shift.
+                    x=`expr $((16#${address:1:2})) + 1`
+                    y=`expr $((16#${nextAddress:0:1})) + 1`
+                    
+                    reg[16]=$(($reg[$x] & 1))
+                    reg[$x]=$(($reg[$x] >> 1))
+                    ;;
+                *)
+                    done=1
+                    echo "ERROR! Unimplemented math opcode called: ${address}${nextAddress}"
+                    ;;
+            esac
+
+            ;;
         (a)
             # Format: ANNN
             # Sets I to the address NNN.
             I=$((16#${address:1:2}${ram[`expr $PC + 1`]:0:2}))
             #echo "I now set to: $I"
             #((PC+=2))
+            ;;
+        (c)
+            # Format: CXNN
+            # Set register X = random byte AND NN.
+            getRandom
+            random=$?
+            nextAddress=$((16#$ram[`expr $PC + 1`]))
+            reg[`expr $((16#${address:1:2})) + 1`]=$(($random & $nextAddress))
             ;;
         (d)
             # Format: DXYN
@@ -294,9 +429,8 @@ do
                         #echo $screen[$location]
                         previous=$screen[$location]
                         screen[location]=$(($screen[$location] ^ 1))
-                        if [[ $previous -eq 1 && $screen[$location] -eq 1 ]]
+                        if [[ $previous -eq 1 && $screen[$location] -eq 0 ]]
                         then
-                            done=1
                             echo "Sprite collision!"
                             reg[16]=1
                         fi
@@ -309,136 +443,6 @@ do
             #done=1
             draw=1
             #((PC+=2))
-            ;;
-        (2)
-            # Format: 2NNN
-            # Calls subroutine at NNN.
-            stack[sp]=$PC
-            ((sp++))
-            PC=$((16#${address:1:2}${ram[`expr $PC + 1`]:0:2}))
-            ((PC-=2))
-            #echo "Calling subroutine at address $PC"
-            ;;
-        (3)
-            # Format: 3XNN
-            # Skips the next instruction if data register X is equal to NN. 
-            register=$reg[`expr $((16#${address:1:2})) + 1`]
-
-            if [ $register -eq $((16#${ram[`expr $PC + 1`]:0:2})) ]
-            then
-                ((PC+=2))
-            fi
-            #else
-            #    ((PC+=2))
-            #fi
-            ;;
-        (4)
-            # Format: 4XNN
-            # Skips the next instruction if data register X is not equal to NN. 
-            register=$reg[`expr $((16#${address:1:2})) + 1`]
-
-            if [ $register -ne $((16#${ram[`expr $PC + 1`]:0:2})) ]
-            then
-                ((PC+=2))
-            fi
-            ;;
-        (6)
-            # Format: 6XNN
-            # Sets data register X to NN.
-            nextAddress=${ram[`expr $PC + 1`]:0:2}
-            #echo "Making data register ${address:1:2} set to $nextAddress"
-            reg[`expr $((16#${address:1:2})) + 1`]=$((16#${nextAddress}))
-            #((PC+=2))
-            ;;
-        (7)
-            # Format: 7XNN
-            # Adds NN to data register X.
-            toAdd=$((16#${ram[`expr $PC + 1`]:0:2}))
-            regAddress=`expr $((16#${address:1:2})) + 1`
-            #echo "Adding $toAdd to data register #$regAddress which is $reg[$regAddress]"
-            added=`expr $toAdd + $reg[$regAddress]`
-            # We need to implement integer overflow.
-            if [ `expr $added` -gt 255 ]
-            then
-                reg[$regAddress]=`expr $added - 255`
-            else
-                reg[$regAddress]=$added
-            fi
-            #echo "Register is now: $reg[$regAddress]"
-            #((PC+=2))
-            ;;
-        (8)
-            # The mega math opcode
-            nextAddress=${ram[`expr $PC + 1`]}
-            case ${nextAddress:1:2} in
-                (2)
-                    # Format 8XY2
-                    # Sets register X to register X AND register Y. (Bitwise AND operation)
-                    x=`expr $((16#${address:1:2})) + 1`
-                    y=`expr $((16#${nextAddress:0:1})) + 1`
-                    reg[$x]=$(($reg[$x] & $reg[$y]))
-                    ;;
-                (4)
-                    # Format 8XY4
-                    # Adds register Y to register X. Register 16 (carry flag) is set to 1 when there's a carry, and to 0 when there isn't.
-                    x=`expr $((16#${address:1:2})) + 1`
-                    y=`expr $((16#${nextAddress:0:1})) + 1`
-
-                    added=`expr $reg[$x] + $reg[$y]`
-                    
-                    # We need to implement integer overflow.
-                    if [ $added -gt 255 ]
-                    then
-                        #done=1
-                        echo "Overflowing!"
-                        reg[$x]=`expr $added - 256`
-                        reg[16]=1
-                    else
-                        reg[$x]=$added
-                        reg[16]=0
-                    fi
-                    ;;
-                (5)
-                    # Format 8XY5
-                    # register Y is subtracted from register X. register 16 (carry flag) is set to 0 when there's a borrow, and 1 when there isn't.
-                    x=`expr $((16#${address:1:2})) + 1`
-                    y=`expr $((16#${nextAddress:0:1})) + 1`
-
-                    sub=`expr $reg[$x] - $reg[$y]`
-                    
-                    # We need to implement integer overflow.
-                    if [ $sub -lt 0 ]
-                    then
-                        reg[$x]=`expr $sub + 256`
-                        reg[16]=1
-                    else
-                        reg[$x]=$sub
-                        reg[16]=0
-                    fi
-                    ;;
-                (6)
-                    # Format 8XY6
-                    # Shifts register X right by one. Register 16 (carry flag) is set to the value of the least significant bit of VX before the shift.
-                    x=`expr $((16#${address:1:2})) + 1`
-                    y=`expr $((16#${nextAddress:0:1})) + 1`
-                    
-                    reg[16]=$(($reg[$x] & 1))
-                    reg[$x]=$(($reg[$x] >> 1))
-                    ;;
-                *)
-                    done=1
-                    echo "ERROR! Unimplemented math opcode called: ${address}${nextAddress}"
-                    ;;
-            esac
-
-            ;;
-        (c)
-            # Format: CXNN
-            # Set register X = random byte AND NN.
-            getRandom
-            random=$?
-            nextAddress=$((16#$ram[`expr $PC + 1`]))
-            reg[`expr $((16#${address:1:2})) + 1`]=$(($random & $nextAddress))
             ;;
         (e)
             # Format: EX9E or EXA1
@@ -475,6 +479,11 @@ do
                     # Sets delayTimer to register X
                     delayTimer=$reg[`expr $((16#${address:1:2})) + 1`]
                     ;;
+                (18)
+                    # Format: FX18
+                    # Something to do with sound
+                    # TODO: Actually implement
+                    ;;
                 (29)
                     # Format: FX29
                     # Sets I to the location of the sprite for the character in VX. Characters 0-F (in hexadecimal) are represented by a 4x5 font.
@@ -507,11 +516,14 @@ do
                     # A check to make sure everything is working.
                     if [ $number -gt 0 ]
                     then
-                        done=1
+                        pause=1
                         echo "Exciting stuff!"
                         echo "hex: $hex"
                         echo "number: $number"
                         echo "I: $I"
+                        echo "value 1: $ram[$I]"
+                        echo "value 2: $ram[(($I + 1))]"
+                        echo "value 3: $ram[(($I + 2))]"
                     fi
                     #((PC+=2))
                     ;;
