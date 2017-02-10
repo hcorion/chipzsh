@@ -366,8 +366,7 @@ do
         (c)
             # Format: CXNN
             # Set register X = random byte AND NN.
-            #random=$(( RANDOM % 255 ))
-            random=$(( 15 % 255))
+            random=$(( RANDOM % 255 ))
             nextAddress=$((16#$ram[`expr $PC + 1`]))
             reg[`expr $((16#${address:1:2})) + 1`]=$(($random & $nextAddress))
             ;;
