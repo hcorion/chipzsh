@@ -24,6 +24,7 @@ LC_ALL=C inputfile=($(od -t x1 -An tetris.ch8))
 PC=512
 
 # There is also an index register! Hooray!
+# The index register is 16-bit!
 I=0
 
 # We also need a stack, hooray!
@@ -33,6 +34,7 @@ sp=1
 
 # There are 15 general purpose registers.
 # There is also a 16th register for carry operations.
+# All 16 registers are 8-bit, ie max 255
 declare -a reg
 for i in {1..16}
 do
@@ -48,7 +50,12 @@ do
     screen+=0
 done
 
+# A timer used for delaying of things.
 delayTimer=0
+# The amount of cycles before delayTimer decrements, is readonly
+declare -r waitTime=5
+# This is decremented every turn, if it reaches 0, it is reset to $waitTime and delayTimer is decremented 1.
+delayCycles=$waitTime
 
 ########################################
 ## SETTING UP THE RAM                 ##
@@ -158,7 +165,12 @@ do
     # There is no easy cross-platform way to calculate the time in nano-seconds, so we just have to fudge it.
     if [ $delayTimer -gt 0 ]
     then
-        ((delayTimer-=1))
+        ((delayCycles-=1))
+        if [ $delayCycles -le 0 ]
+        then
+            ((delayTimer-=1))
+            delayCycles=$waitTime
+        fi
     fi
 
     if [ $pause -eq 1 ]
