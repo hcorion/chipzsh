@@ -93,7 +93,6 @@ fonts=(
 declare -a ram
 
 #Add the fonts to the ram. Exactly 80 characters (0x50)
-
 for i in {1..${#fonts[@]}}
 do
     echo $fonts[$i]
@@ -150,8 +149,8 @@ do
         done
         fmt+="\n"
         printf -v new "$fmt" "${screen[@]}"
-        new=${new//1/█}
-        echo "${new//0/ }"
+        new=${new//1/██}
+        echo "${new//0/  }"
         #█
         #echo "fmt: $fmt"
 
@@ -300,6 +299,13 @@ do
                     y=`expr $((16#${nextAddress:0:1})) + 1`
                     reg[$x]=$(($reg[$x] & $reg[$y]))
                     ;;
+                (3)
+                    # Format 8XY3
+                    # Sets register X to register X AND register Y. (Bitwise AND operation)
+                    x=`expr $((16#${address:1:2})) + 1`
+                    y=`expr $((16#${nextAddress:0:1})) + 1`
+                    reg[$x]=$(($reg[$x] ^ $reg[$y]))
+                    ;;
                 (4)
                     # Format 8XY4
                     # Adds register Y to register X. Register 16 (carry flag) is set to 1 when there's a carry, and to 0 when there isn't.
@@ -327,7 +333,7 @@ do
                     sub=`expr $reg[$x] - $reg[$y]`
                     
                     # We need to implement integer overflow.
-                    if [ $sub -lt 0 ]
+                    if [ $x -gt $y ]
                     then
                         reg[$x]=`expr $sub + 256`
                         reg[16]=1
@@ -375,33 +381,19 @@ do
             x=$((16#${address:1:2}))
             y=$((16#${nextAddress:0:1}))
             reg[16]=0
-            #echo $height
-            #for (( row=0; row<$height; row++ ))
-            #do
-            #    echo "Number= `expr $I + $row`"
-            #    sprite=$((16#$ram[`expr $I + $row`]))
-            #    echo "row = $row"
-            #    echo "Sprite = $sprite"
-            #done
-            #done=1
-            
-            #echo "X = $x y=$y height=$height and the opcode was ${address}${nextAddress}"
-            
+
             for (( row=0; row<$height; row++ ))
             do
                 sprite=$((16#$ram[`expr $I + $row`]))
                 for col in {0..7}
                 do
                     test=$((${sprite} & 128))
-                    #echo "$sprite and 120 = $test"
                     if [ $test -gt 0 ]
                     then
+                        xpos=$(( $reg[$(($x+1))] + $col))
+                        ypos=$(( $reg[$(($y+1))] + $row))
 
-                        # Set pixels:
-                        xpos=$(($reg[$(($x+1))] + col))
-                        ypos=$(($reg[$(($y+1))] + row))
-                        #echo "Setting pixel at X $xpos Y $ypos"
-                        if [ $ypos -gt 32 ]
+                        if [ $ypos -ge 32 ]
                         then
                             done=1
                             echo "Error! ypos is greater than 32, and is $ypos"
@@ -414,9 +406,8 @@ do
                             do
                                 ((xpos-=1))
                             done
-
                         fi
-                        location=$(($xpos + ( $ypos * $columns ) + 1))
+                        location=$(($xpos + ( $ypos * $columns ) + 1 ))
                         if [ $location -gt 2048 ]
                         then
                             done=1
@@ -425,13 +416,10 @@ do
                             echo "ypos: $ypos"
                             echo "xpos: $xpos"
                         fi
-                        #echo "Location: $location"
-                        #echo $screen[$location]
-                        previous=$screen[$location]
+
                         screen[location]=$(($screen[$location] ^ 1))
-                        if [[ $previous -eq 1 && $screen[$location] -eq 0 ]]
+                        if [ $screen[$location] -eq 0 ]
                         then
-                            echo "Sprite collision!"
                             reg[16]=1
                         fi
                     fi
@@ -489,13 +477,12 @@ do
                     # Sets I to the location of the sprite for the character in VX. Characters 0-F (in hexadecimal) are represented by a 4x5 font.
                     data=`expr $((16#${address:1:2})) + 1`
                     
-                    I=$(($reg[$data] * 5))
+                    I=$(($reg[$data] * 5 + 1))
                     if [ $I -gt 255 ]
                     then
                         echo "I is really (too) big."
                         done=1 
                     fi
-                    #((PC+=2))
                     ;;
                 (33)
                     # Format FX33
@@ -507,7 +494,7 @@ do
                     printf -v hex "%x" $(( $number / 100 ))
                     ram[(($I))]=$hex
 
-                    printf -v hex "%x" $(( $number % 100 /10 ))
+                    printf -v hex "%x" $(( $number % 100 / 10 ))
                     ram[(($I + 1))]=$hex
 
                     printf -v hex "%x" $(( $number % 10 ))
