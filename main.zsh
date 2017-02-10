@@ -14,25 +14,11 @@ echo "test"
 
 # Reading input from file TODO: Add support for different files.
 declare -a inputfile
-LC_ALL=C inputfile=($(od -t x1 -An brix.ch8))
+LC_ALL=C inputfile=($(od -t x1 -An tetris.ch8))
 
 ########################################
 ## SETTING UP THE VARIABLES           ##
 ########################################
-
-function getRandom()
-{
-    # By setting the internet to 1 it becomes very slow to generate random numbers
-    # and requires an internet connection but you get the very best random numbers.
-    return 15
-    internet=1
-    if [ $internet -eq 1 ]
-    then
-        return $(curl -s "https://www.random.org/integers/?num=1&min=0&max=255&col=1&base=10&format=plain&rnd=new")
-    else
-        return $(( RANDOM % 255 ))
-    fi
-}
 
 # The program counter starts at 0x200 (512)
 PC=512
@@ -63,7 +49,6 @@ do
 done
 
 delayTimer=0
-speed=1
 
 ########################################
 ## SETTING UP THE RAM                 ##
@@ -126,6 +111,9 @@ inputfile=""
 ## MAIN LOOP                          ##
 ########################################
 
+# Bash/zsh has a built-in clock. This just resets it.
+SECONDS=0
+
 # I don't think bash does booleans properly, so 0 is not done and 1 is done.
 done=0
 cycles=0
@@ -133,7 +121,8 @@ draw=0
 pause=0
 maxCycles=3500
 actualCycles=0
-rm ./brix-${maxCycles}-mine.txt 
+rm ./tetris-${maxCycles}-mine.txt
+
 while [ $done -eq 0 ]
 do
 
@@ -166,15 +155,11 @@ do
         exit
     fi
     
-    if [ $cycles -ge $speed ]
+    # There is no easy cross-platform way to calculate the time in nano-seconds, so we just have to fudge it.
+    if [ $delayTimer -gt 0 ]
     then
-        cycles=0
-        if [ $delayTimer -gt 0 ]
-        then
-            ((delayTimer-=1))
-        fi
+        ((delayTimer-=1))
     fi
-    
 
     if [ $pause -eq 1 ]
     then
@@ -189,7 +174,7 @@ do
 
     #echo "Opcode: ${address}${ram[`expr $PC + 1`]:0:2}"
     
-    echo "${address}${ram[`expr $PC + 1`]:0:2}" &>> brix-${maxCycles}-mine.txt 
+    echo "${address}${ram[`expr $PC + 1`]:0:2}" &>> tetris-${maxCycles}-mine.txt 
     #echo "delayTimer: $delayTimer"
 
     case ${address:0:1} in
@@ -274,7 +259,7 @@ do
             # We need to implement integer overflow.
             if [ `expr $added` -gt 255 ]
             then
-                reg[$regAddress]=`expr $added - 255`
+                reg[$regAddress]=`expr $added - 256`
             else
                 reg[$regAddress]=$added
             fi
@@ -358,6 +343,19 @@ do
             esac
 
             ;;
+        (9)
+            # Format: 9XY0
+            # Skips the next instruction if register X doesn't equal register Y.
+            nextAddress=${ram[`expr $PC + 1`]}
+
+            x=$reg[`expr $((16#${address:1:2})) + 1`]
+            y=$reg[`expr $((16#${nextAddress:0:1})) + 1`]
+
+            if [ $x -ne $y ]
+            then
+                ((PC+=2))
+            fi
+            ;;
         (a)
             # Format: ANNN
             # Sets I to the address NNN.
@@ -368,8 +366,8 @@ do
         (c)
             # Format: CXNN
             # Set register X = random byte AND NN.
-            getRandom
-            random=$?
+            #random=$(( RANDOM % 255 ))
+            random=$(( 15 % 255))
             nextAddress=$((16#$ram[`expr $PC + 1`]))
             reg[`expr $((16#${address:1:2})) + 1`]=$(($random & $nextAddress))
             ;;
@@ -477,12 +475,8 @@ do
                     # Sets I to the location of the sprite for the character in VX. Characters 0-F (in hexadecimal) are represented by a 4x5 font.
                     data=`expr $((16#${address:1:2})) + 1`
                     
+                    # I is an unsigned 16-bit value, so we don't need to worry about overflow here.
                     I=$(($reg[$data] * 5 + 1))
-                    if [ $I -gt 255 ]
-                    then
-                        echo "I is really (too) big."
-                        done=1 
-                    fi
                     ;;
                 (33)
                     # Format FX33
@@ -499,20 +493,6 @@ do
 
                     printf -v hex "%x" $(( $number % 10 ))
                     ram[(($I + 2))]=$hex
-                    
-                    # A check to make sure everything is working.
-                    if [ $number -gt 0 ]
-                    then
-                        pause=1
-                        echo "Exciting stuff!"
-                        echo "hex: $hex"
-                        echo "number: $number"
-                        echo "I: $I"
-                        echo "value 1: $ram[$I]"
-                        echo "value 2: $ram[(($I + 1))]"
-                        echo "value 3: $ram[(($I + 2))]"
-                    fi
-                    #((PC+=2))
                     ;;
                 (65)
                     # Format: FX65
@@ -524,6 +504,24 @@ do
                     done
                     #echo "reg after" $reg
                     #((PC+=2))
+                    ;;
+                (1e)
+                    # Format: FX1e
+                    # Adds data register X to I
+                    x=`expr $((16#${address:1:2})) + 1`
+
+                    added=`expr $I + $reg[$x]`
+                    
+                    # We need to implement integer overflow.
+                    if [ $added -gt 65535 ]
+                    then
+                        I=`expr $added - 65536`
+                        reg[16]=1
+                    else
+                        I=$added
+                        reg[16]=0
+                    fi
+
                     ;;
                 *)
                     echo "F is unimplemented. Calling: ${address:1:2}${ram[`expr $PC + 1`]:0:2}"
