@@ -14,7 +14,7 @@ echo "test"
 
 # Reading input from file TODO: Add support for different files.
 declare -a inputfile
-LC_ALL=C inputfile=($(od -t x1 -An tetris.ch8))
+LC_ALL=C inputfile=($(od -t x1 -An blinky.ch8))
 
 ########################################
 ## SETTING UP THE VARIABLES           ##
@@ -159,7 +159,7 @@ do
     ((actualCycles+=1))
     if [ $actualCycles -gt $maxCycles ]
     then
-        exit
+        #exit
     fi
     
     # There is no easy cross-platform way to calculate the time in nano-seconds, so we just have to fudge it.
@@ -193,17 +193,13 @@ do
         (0)
             case ${ram[`expr $PC + 1`]:0:2} in
                 (ee)
-                    #echo "Returning from subroutine."
                     ((sp-=1))
-                    PC=$stack[$sp] # $(($sp - 1))]
-                    echo "Returning from subroutine to opcode: ${ram[$PC]:0:2}${ram[`expr $PC + 1`]:0:2}"
-                    #$((PC-=2))
-                    #echo ""
+                    PC=$stack[$sp]
                     ;;
                 (e0)
                     echo "LOL SUPPOSED TO CLEAR THE SCREEN HERE :P"
                     echo "Drawing pixels is not yet implemented."
-                    done=1
+                    pause=1
                     draw=1
                     #((PC+=2))
                     ;;
@@ -289,6 +285,13 @@ do
                     y=`expr $((16#${nextAddress:0:1})) + 1`
                     reg[$x]=$reg[$y]
                     ;;
+                (1)
+                    # Format 8XY1
+                    # Sets register X to register X OR rgister Y.
+                    x=`expr $((16#${address:1:2})) + 1`
+                    y=`expr $((16#${nextAddress:0:1})) + 1`
+                    reg[$x]=$(($reg[$x] | $reg[$y]))
+                    ;;
                 (2)
                     # Format 8XY2
                     # Sets register X to register X AND register Y. (Bitwise AND operation)
@@ -347,6 +350,15 @@ do
                     
                     reg[16]=$(($reg[$x] & 1))
                     reg[$x]=$(($reg[$x] >> 1))
+                    ;;
+                (e)
+                    # Format 8XYe
+                    # Shifts register X left by one. Register 16 (carry flag) is set to the value of the most significant bit of VX before the shift.
+                    x=`expr $((16#${address:1:2})) + 1`
+                    y=`expr $((16#${nextAddress:0:1})) + 1`
+                    
+                    reg[16]=$(($reg[$x] & 128))
+                    reg[$x]=$(($reg[$x] << 1))
                     ;;
                 *)
                     done=1
@@ -448,15 +460,20 @@ do
             # Skips the next instruction if the key stored in register X is pressed.
             then
                 # TODO: ACTUALLY implement
-                #((PC+=2))
+                # I haven't found a ROM that uses this yet, so I'm leaving it unimplemented.
+                done=1
                 echo "Warning, nothing actually happens here."
                 
             elif [ "$nextAddress" = "a1" ]
             # Skips the next instruction if the key stored in register X isn't pressed.
             then
-                # TODO: ACTUALLY implement
-                echo "Warning, nothing actually happens here."
-                ((PC+=2))
+                key=$reg[`expr $((16#${address:1:2})) + 1`]
+                if [ $key -eq 4 ]
+                then
+                    ((PC+=2))
+                fi
+                #echo "Warning, nothing actually happens here."
+                
             else
                 done=1
                 echo "Error! Unkown opcode was called: ${address}${nextAddress}"
@@ -504,6 +521,17 @@ do
 
                     printf -v hex "%x" $(( $number % 10 ))
                     ram[(($I + 2))]=$hex
+                    ;;
+                (55)
+                    # Format: FX55
+                    # Stores Register 0 to Register X (including X) in memory starting at address I.
+                    #echo "reg before" $reg
+                    for i in {0..$((16#${address:1:2}))}
+                    do
+                        #reg[$i]=$((16#$ram[`expr $I + $i - 1`]))
+                        printf -v hex "%x" $reg[$(($i + 1))]
+                        ram[$(($I + $i))]=$hex
+                    done
                     ;;
                 (65)
                     # Format: FX65
