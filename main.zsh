@@ -1,5 +1,4 @@
 #! /usr/bin/env zsh
-echo "test"
 
 ## I made it easier on myself and used the following shell utilities:
 ## - od command for reading the binary from the file.
@@ -15,6 +14,18 @@ echo "test"
 # Reading input from file TODO: Add support for different files.
 declare -a inputfile
 LC_ALL=C inputfile=($(od -t x1 -An tetris.ch8))
+########################################
+##               TESTS                ##
+########################################
+
+if [ ! -f input.txt ]
+then
+    echo "The file input.txt was not found, the emulator will still run fine, but will not accept any input from your keyboard."
+    echo "If you did want input, just run the input.zsh file in another window."
+    echo "If you don't want input, type in any key to continue. If you do want input, just press Ctrl+C and run the input.zsh script."
+    read -q
+    input=no
+fi
 
 ########################################
 ## SETTING UP THE VARIABLES           ##
@@ -118,8 +129,6 @@ inputfile=""
 ## MAIN LOOP                          ##
 ########################################
 
-# Bash/zsh has a built-in clock. This just resets it.
-SECONDS=0
 
 # I don't think bash does booleans properly, so 0 is not done and 1 is done.
 done=0
