@@ -170,7 +170,7 @@ do
     ((actualCycles+=1))
     if [ $actualCycles -gt $maxCycles ]
     then
-        exit
+        #exit
     fi
     
     # There is no easy cross-platform way to calculate the time in nano-seconds, so we just have to fudge it.
@@ -274,12 +274,13 @@ do
             #echo "Adding $toAdd to data register #$regAddress which is $reg[$regAddress]"
             added=`expr $toAdd + ${reg[$x]}`
             # We need to implement integer overflow.
-            if [ $added -gt 255 ]
-            then
-                reg[$x]=`expr $added - 256`
-            else
-                reg[$x]=$added
-            fi
+            #if [ $added -gt 255 ]
+            #then
+            #    reg[$x]=`expr $added - 256`
+            #else
+            #    reg[$x]=$added
+            #fi
+            reg[$x]=$(($added & 255))
             #echo "Register is now: $reg[$regAddress]"
             #((PC+=2))
             ;;
@@ -331,12 +332,13 @@ do
                     # We need to implement integer overflow.
                     if [ $added -gt 255 ]
                     then
-                        reg[$x]=`expr $added - 256`
+                        #reg[$x]=`expr $added - 255`
                         reg[15]=1
                     else
-                        reg[$x]=$added
+                        #reg[$x]=$added
                         reg[15]=0
                     fi
+                    reg[$x]=$(( $added & 255))
                     ;;
                 (5)
                     # Format 8XY5
@@ -347,14 +349,16 @@ do
                     sub=`expr ${reg[$x]} - ${reg[$y]}`
                     
                     # We need to implement integer overflow.
-                    if [ $x -ge $y ]
+                    if [ ${reg[$x]} -gt ${reg[$y]} ]
                     then
-                        reg[$x]=`expr $sub + 256`
                         reg[15]=1
+                        #reg[$x]=`expr $sub + 256`
+                        
                     else
-                        reg[$x]=$sub
                         reg[15]=0
+                        #reg[$x]=$sub
                     fi
+                    reg[$x]=$(( $sub & 255))
                     ;;
                 (6)
                     # Format 8XY6
