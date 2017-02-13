@@ -28,7 +28,7 @@ fi
 
 declare -a inputfile
 # Reading input from file TODO: Add support for different files.
-LC_ALL=C inputfile=($(od -t x1 -An brix.ch8))
+LC_ALL=C inputfile=($(od -t x1 -An pong.ch8))
 
 ########################################
 ## SETTING UP THE VARIABLES           ##
@@ -195,7 +195,6 @@ do
     address=${ram[$PC]}
     
     echo "${address}${ram[`expr $PC + 1`]:0:2}" &>> brix-${maxCycles}-mine.txt 
-    #echo "delayTimer: $delayTimer"
 
     case ${address:0:1} in
         (0)
@@ -205,11 +204,13 @@ do
                     PC=${stack[$sp]}
                     ;;
                 (e0)
-                    echo "LOL SUPPOSED TO CLEAR THE SCREEN HERE :P"
-                    echo "Drawing pixels is not yet implemented."
-                    pause=1
+                    # Format: 00e0
+                    # Clears the screen.
+                    for i in {0..${#screen[@]}}
+                    do
+                        screen[$i]=0
+                    done
                     draw=1
-                    #((PC+=2))
                     ;;
                 *)
                     echo "YOUR NOT SUPPOSED TO TRIGGER"
@@ -223,7 +224,6 @@ do
             # Jumps to address NNN.
             PC=$((16#${address:1:2}${ram[`expr $PC + 1`]:0:2}))
             ((PC-=2))
-            #echo "PC now set to: $PC"
             ;;
         (2)
             # Format: 2NNN
@@ -232,21 +232,16 @@ do
             ((sp++))
             PC=$((16#${address:1:2}${ram[`expr $PC + 1`]:0:2}))
             ((PC-=2))
-            #echo "Calling subroutine at address $PC"
             ;;
         (3)
             # Format: 3XNN
             # Skips the next instruction if data register X is equal to NN. 
             register=${reg[$((16#${address:1:2}))]}
-            echo "Register $((16#${address:1:2}))'s value is ${register}. The PC is $PC and were comparing $((16#${ram[`expr $PC + 1`]:0:2}))"  &>> brix-${maxCycles}-mine.txt 
+
             if [ $register -eq $((16#${ram[`expr $PC + 1`]:0:2})) ]
             then
                 ((PC+=2))
             fi
-            
-            #else
-            #    ((PC+=2))
-            #fi
             ;;
         (4)
             # Format: 4XNN
@@ -262,9 +257,8 @@ do
             # Format: 6XNN
             # Sets data register X to NN.
             nextAddress=${ram[`expr $PC + 1`]:0:2}
-            #echo "Making data register ${address:1:2} set to $nextAddress"
+
             reg[$((16#${address:1:2}))]=$((16#${nextAddress}))
-            #((PC+=2))
             ;;
         (7)
             # Format: 7XNN
@@ -273,16 +267,9 @@ do
             x=$((16#${address:1:2}))
             #echo "Adding $toAdd to data register #$regAddress which is $reg[$regAddress]"
             added=`expr $toAdd + ${reg[$x]}`
-            # We need to implement integer overflow.
-            #if [ $added -gt 255 ]
-            #then
-            #    reg[$x]=`expr $added - 256`
-            #else
-            #    reg[$x]=$added
-            #fi
+
+            # The & 255 makes sure the variable overflows properly.
             reg[$x]=$(($added & 255))
-            #echo "Register is now: $reg[$regAddress]"
-            #((PC+=2))
             ;;
         (8)
             # The mega math opcode
@@ -332,12 +319,12 @@ do
                     # We need to implement integer overflow.
                     if [ $added -gt 255 ]
                     then
-                        #reg[$x]=`expr $added - 255`
                         reg[15]=1
                     else
-                        #reg[$x]=$added
                         reg[15]=0
                     fi
+
+                    # The & 255 makes sure the variable overflows properly.
                     reg[$x]=$(( $added & 255))
                     ;;
                 (5)
@@ -352,12 +339,11 @@ do
                     if [ ${reg[$x]} -gt ${reg[$y]} ]
                     then
                         reg[15]=1
-                        #reg[$x]=`expr $sub + 256`
-                        
                     else
                         reg[15]=0
-                        #reg[$x]=$sub
                     fi
+
+                    # The & 255 makes sure the variable overflows properly.
                     reg[$x]=$(( $sub & 255))
                     ;;
                 (6)
@@ -408,8 +394,7 @@ do
         (c)
             # Format: CXNN
             # Set register X = random byte AND NN.
-            #random=$(( RANDOM % 255 ))
-            random=200
+            random=$(( RANDOM % 255 ))
             nextAddress=$((16#${ram[`expr $PC + 1`]}))
             reg[$((16#${address:1:2}))]=$(($random & $nextAddress))
             ;;
