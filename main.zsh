@@ -15,10 +15,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-## I made it easier on myself and used the following shell utilities:
-## - od command for reading the binary from the file.
-
-
 # Ksh arrays start at 0, and the chip-8 register access starts at 0. It makes things simpler.
 setopt KSH_ARRAYS
 
@@ -597,6 +593,3 @@ do
 
     ((PC+=2))
 done
-
-echo "Stats: "
-echo "We went through $cycles cycles."
