@@ -18,14 +18,18 @@
 trap ctrl_c INT
 
 function ctrl_c() {
-        echo "Ok, closing down, just let me cleanup."
+        echo "\n Ok, closing down, just let me cleanup."
         rm input.txt
         exit
 }
 
-
-rm input.txt
+echo "Press any of the following keys while the emulator is running. Use Ctrl-C to quit."
+echo "|1|2|3|4|"
+echo "|q|w|e|r|"
+echo "|a|s|d|f|"
+echo "|z|x|c|v|"
 echo "" > input.txt
+
 while true
 do
     read -k 1 input
@@ -83,10 +87,10 @@ do
         echo "15" > input.txt
     ;;
     *)
-        echo "Unsupported input, keys you can press are: "
+        echo "\nUnsupported input, keys you can press are: "
         echo "|1|2|3|4|"
         echo "|q|w|e|r|"
         echo "|a|s|d|f|"
-        echo "|z|x|c|v|"
+        echo "|z|x|c|v|\n"
     esac
 done

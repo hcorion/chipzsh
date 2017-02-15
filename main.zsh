@@ -15,21 +15,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-
-
-
 ## I made it easier on myself and used the following shell utilities:
 ## - od command for reading the binary from the file.
 
-## Developing notes
-# Ram size is 4096, 0x1000 in hex
-# All ram values should be stored in hex
-# The PC, I, Stack, Stack Pointer, screen and registers should be stored as integers.
-# This seems to be a good solution for input: http://stackoverflow.com/questions/24118224/how-to-make-asynchronous-function-calls-in-shell-scripts
-# For converting hex to decimal: echo $((16#FF))
 
+# Ksh arrays start at 0, and the chip-8 register access starts at 0. It makes things simpler.
 setopt KSH_ARRAYS
-
 
 ########################################
 ##               TESTS                ##
@@ -119,7 +110,6 @@ declare -a ram
 #Add the fonts to the ram. Exactly 80 characters (0x50)
 for i in {0..${#fonts[@]}}
 do
-    echo ${fonts[$i]}
     ram+=(${fonts[$i]})
 done
 
@@ -135,7 +125,7 @@ do
 done
 
 # Fill up the rest of the rom.
-for i in {0..$(expr 3584 - ${#inputfile[@]})}
+for i in {0..$((3583 - ${#inputfile[@]}))}
 do
     ram+=(0)
 done
@@ -143,8 +133,6 @@ done
 echo $ram
 echo "RAM LENGTH: ${#ram[@]} (should be 4096)"
 
-#Delete variable
-inputfile=""
 
 ########################################
 ## MAIN LOOP                          ##
@@ -152,19 +140,17 @@ inputfile=""
 
 
 # I don't think bash does booleans properly, so 0 is not done and 1 is done.
+
+# A variable to signify that the emulator needs to be stopped, usually set to 1 for unimplemented opcodes.
 done=0
-cycles=0
+# A flag that is set whenever the screen needs to be drawn, because we don't need to draw every frame.
 draw=0
+# A debugging flag. Set this to 1 at any point in the code to have the emulator stop and wait for your input.
 pause=0
-maxCycles=3500
-actualCycles=0
-rm ./brix-${maxCycles}-mine.txt
+
 while [ $done -eq 0 ]
 do
 
-    
-    #echo "PC: $PC"
-    
     # Drawing the screen.
     if [ $draw -eq 1 ]
     then
@@ -174,21 +160,14 @@ do
         done
         fmt+="\n"
         printf -v new "$fmt" "${screen[@]}"
+
+        # Converting the 0s and 1s to a nice readable format.
         new=${new//1/██}
         echo "${new//0/  }"
-        #█
-        #echo "fmt: $fmt"
 
         fmt=""
         draw=0
-        echo "-----------------------------------------------------"
-    fi
-
-    ((cycles+=1))
-    ((actualCycles+=1))
-    if [ $actualCycles -gt $maxCycles ]
-    then
-        #exit
+        echo "--------------------------------------------------------------------------------------------------------------------------------"
     fi
     
     # There is no easy cross-platform way to calculate the time in nano-seconds, so we just have to fudge it.
@@ -204,25 +183,24 @@ do
 
     if [ $pause -eq 1 ]
     then
-        
         pause=0
         echo "Press any key when your ready to proceed."
         read -q
     fi
 
     address=${ram[$PC]}
-    
-    echo "${address}${ram[`expr $PC + 1`]:0:2}" &>> brix-${maxCycles}-mine.txt 
 
     case ${address:0:1} in
         (0)
-            case ${ram[`expr $PC + 1`]:0:2} in
+            case ${ram[`expr $PC + 1`]} in
                 (ee)
+                    # Format: 00EE
+                    # Returns from a subroutine.
                     ((sp-=1))
                     PC=${stack[$sp]}
                     ;;
                 (e0)
-                    # Format: 00e0
+                    # Format: 00E0
                     # Clears the screen.
                     for i in {0..${#screen[@]}}
                     do
@@ -231,8 +209,7 @@ do
                     draw=1
                     ;;
                 *)
-                    echo "YOUR NOT SUPPOSED TO TRIGGER"
-                    echo "Opcode: ${address}${ram[`expr $PC + 1`]:0:2}"
+                    echo "Error! Unimplemented 0 opcode (0xyz) called: ${address}${ram[`expr $PC + 1`]}"
                     done=1
                     ;;
             esac
@@ -312,12 +289,8 @@ do
                     # Sets register X to register X AND register Y. (Bitwise AND operation)
                     x=$((16#${address:1:2}))
                     y=$((16#${nextAddress:0:1}))
+
                     reg[$x]=$((${reg[$x]} & ${reg[$y]}))
-                    if [ ${reg[$x]} -gt 255 ]
-                    then
-                        echo "Unimplemented overflow in bitwise AND operation."
-                        done=1
-                    fi
                     ;;
                 (3)
                     # Format 8XY3
@@ -384,7 +357,7 @@ do
                     ;;
                 *)
                     done=1
-                    echo "ERROR! Unimplemented math opcode called: ${address}${nextAddress}"
+                    echo "Error! Unimplemented math opcode (8xyz) called: ${address}${nextAddress}"
                     ;;
             esac
 
@@ -406,8 +379,6 @@ do
             # Format: ANNN
             # Sets I to the address NNN.
             I=$((16#${address:1:2}${ram[`expr $PC + 1`]:0:2}))
-            #echo "I now set to: $I"
-            #((PC+=2))
             ;;
         (c)
             # Format: CXNN
@@ -457,7 +428,7 @@ do
                         if [ $location -gt 2048 ]
                         then
                             done=1
-                            echo "ERROR, ERROR!"
+                            echo "Error! The location to set the pixel was greater than the screen size."
                             echo "location: $location"
                             echo "ypos: $ypos"
                             echo "xpos: $xpos"
@@ -471,12 +442,8 @@ do
                     fi
                     sprite=$(($sprite << 1))
                 done
-                
             done
-            
-            #done=1
             draw=1
-            #((PC+=2))
             ;;
         (e)
             # Format: EX9E or EXA1
@@ -487,7 +454,7 @@ do
                 # TODO: ACTUALLY implement
                 # I haven't found a ROM that uses this yet, so I'm leaving it unimplemented.
                 done=1
-                echo "Warning, nothing actually happens here."
+                echo "Error! Opcode EX9E was called but has not yet been implemented."
                 
             elif [ "$nextAddress" = "a1" ]
             # Skips the next instruction if the key stored in register X isn't pressed.
@@ -511,7 +478,7 @@ do
                 fi
             else
                 done=1
-                echo "Error! Unkown opcode was called: ${address}${nextAddress}"
+                echo "Error! Unimplemented E opcode (Exyz) called: ${address}${nextAddress}"
             fi
             ;;
         (f)
@@ -597,13 +564,14 @@ do
 
                     ;;
                 *)
-                    echo "F is unimplemented. Calling: ${address:1:2}${ram[`expr $PC + 1`]:0:2}"
+                    echo "F is unimplemented. Calling: ${address:1:2}${ram[`expr $PC + 1`]}"
+                    echo "Error! Unimplemented F opcode (Fxyz) called: ${address}${ram[`expr $PC + 1`]}"
                     done=1
                     ;;
             esac
             ;;
         *)
-            echo "Looks like an unknown operation: ${address:0:1}"
+            echo "Error! Unimplemented opcode called: ${address}${ram[`expr $PC + 1`]}"
             done=1
             ;;
     esac
