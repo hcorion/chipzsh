@@ -30,14 +30,33 @@ if [ ! -f input.txt ]
 then
     echo "The file input.txt was not found, the emulator will still run fine, but will not accept any input from your keyboard."
     echo "If you did want input, just run the input.zsh file in another window."
-    echo "If you don't want input, type in any key to continue. If you do want input, just press Ctrl+C and run the input.zsh script."
+    echo "If you don't want input, type in any key to continue. If you do want input, just type Ctrl+C and run the input.zsh script."
     read -q
     input=no
 fi
 
+
+# Detecting for input for a rom file from the user.
+inputName=""
+if [ -z $1 ]
+then
+    echo "No ROM file name was given. You can pass it as an argument like $0 romname.ch8"
+    echo "You can also just type in the name of the ROM you want to use right now."
+    echo "Enter ROM Name: "
+    read fileName
+    inputName=$fileName
+else
+    inputName=$1
+fi
+
+if [ ! -f $inputName ]; then
+    echo "File $inputName not found! Stopping script."
+    exit
+fi
+
 declare -a inputfile
-# Reading input from file TODO: Add support for different files.
-LC_ALL=C inputfile=($(od -t x1 -An pong.ch8))
+# Reading input from file
+LC_ALL=C inputfile=($(od -t x1 -An ${inputName}))
 
 ########################################
 ## SETTING UP THE VARIABLES           ##
