@@ -1,6 +1,6 @@
 ## chipzsh
 
-A chip-8 emulator written in Bash
+A chip-8 emulator written in Zsh
 
 This script was developed in Zsh, and doesn't work with other shells like sh or bash.
 
